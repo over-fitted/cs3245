@@ -9,6 +9,7 @@ import re
 import nltk
 import sys
 import getopt
+import math
 
 seenWords = set()
 
@@ -22,6 +23,9 @@ tamilFreq = {}
 tamilSum = 0
 
 def build_LM(in_file):
+    global indoSum
+    global malaySum
+    global tamilSum
     """
     build language models for each label
     each line in in_file contains a label and a string separated by a space
@@ -53,18 +57,31 @@ def build_LM(in_file):
         smoothen(word, malayFreq, malaySum)
         smoothen(word, indoFreq, indoSum)
         smoothen(word, tamilFreq, tamilSum)
+
+    # can use for ensuring model is valid
+    # check(malayFreq)
+    # check(indoFreq)
+    # check(tamilFreq)
+
+def check(freq):
+    sum = 0.0
+    for key in freq.keys():
+        sum += freq[key]
+
+    print(sum)
             
 
 # def processString(inputString: str, langDict: Dict[str, int], langSum: int) -> int:
 def processString(inputString, langDict, langSum):
-    ngram = inputString[0:3]
+    ngram = []
+    ngram[:0] = inputString[0:3]
 
-    for char in inputString[4:]:
+    for char in inputString[3:]:
         ngram.append(char)
-        if ngram not in langDict.keys():
-            langDict[ngram] = 0
-            seenWords.add(ngram)
-        langDict[ngram] += 1
+        seenWords.add(tuple(ngram))
+        if tuple(ngram) not in langDict.keys():
+            langDict[tuple(ngram)] = 0
+        langDict[tuple(ngram)] += 1
         langSum += 1
         ngram.pop(0)
     
@@ -74,9 +91,10 @@ def processString(inputString, langDict, langSum):
 def smoothen(word, langDict, langSum):
     if word not in langDict.keys():
         langDict[word] = 1.0 / langSum
-        return
-
-    langDict[word] = float(langDict[word] + 1) / langSum    
+    else:
+        langDict[word] = float(langDict[word] + 1) / langSum    
+    if(langDict[word] == 0):
+        print("0 found")
 
 
 def test_LM(in_file, out_file, LM):
@@ -86,29 +104,63 @@ def test_LM(in_file, out_file, LM):
     you should print the most probable label for each string into out_file
     """
     print("testing language models...")
-    # This is an empty method
-    # Pls implement your code below
 
     inputStrings = []
     with open(in_file) as f:
         inputStrings = f.readlines()
-    for inputString in inputStrings:
-        indoProb = 1.0
-        malayProb = 1.0
-        tamilProb = 1.0
+    for i in range(len(inputStrings)):
+        inputString = inputStrings[i]
+        malayProb = 0.0
+        indoProb = 0.0
+        tamilProb = 0.0
+        unseen = 0.0
+        total = 0.0
 
-        ngram = inputString[0:3]
-        for char in inputString[4:]:
+        ngram = []
+        ngram[:0] = inputString[0:3]
+        for char in inputString[3:]:
             ngram.append(char)
+            total += 1
+            if tuple(ngram) not in seenWords:
+                unseen+=1
+                ngram.pop(0)
+                continue
 
             # multiply probability for each language
+            malayProb += math.log(malayFreq[tuple(ngram)])
+            indoProb += math.log(indoFreq[tuple(ngram)])
+            tamilProb += math.log(tamilFreq[tuple(ngram)])
 
             ngram.pop(0)
 
         # decide which is the best language and add the language name to front of string
+        best = max(indoProb, malayProb, tamilProb)
+
+        # debugging info
+        # print(i, "unseen", unseen / total,"best", best)
+
+        if best == 0.0 or unseen / total >= 0.6:
+            inputString = "other " + inputString
+            inputStrings[i] = inputString
+            continue
+        if best == malayProb:
+            inputString = "malaysian " + inputString
+            inputStrings[i] = inputString
+            continue
+        if best == indoProb:
+            inputString = "indonesian " + inputString
+            inputStrings[i] = inputString
+            continue
+        
+        if best == tamilProb:
+            inputString = "tamil " + inputString
+            inputStrings[i] = inputString
+            continue
+        print("best is not a probability")
+        
 
     # print results
-    with open(out_file) as f:
+    with open(out_file, "w") as f:
         f.writelines(inputStrings)
     
 
@@ -142,4 +194,4 @@ if input_file_b == None or input_file_t == None or output_file == None:
     sys.exit(2)
 
 LM = build_LM(input_file_b)
-# test_LM(input_file_t, output_file, LM)
+test_LM(input_file_t, output_file, LM)
